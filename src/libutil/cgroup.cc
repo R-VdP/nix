@@ -61,8 +61,13 @@ static CgroupStats destroyCgroup(const Path & cgroup, bool returnStats)
     /* Use the fast way to kill every process in a cgroup, if
        available. */
     auto killFile = cgroup + "/cgroup.kill";
-    if (pathExists(killFile))
+    if (pathExists(killFile)) {
+        debug("Found cgroup.kill, writing to it...");
         writeFile(killFile, "1");
+    } else {
+        debug("Did not find cgroup.kill...");
+    }
+
 
     /* Otherwise, manually kill every process in the subcgroups and
        this cgroup. */
