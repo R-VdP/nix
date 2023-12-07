@@ -150,8 +150,8 @@ struct NixArgs : virtual MultiCommand, virtual MixCommonArgs, virtual RootArgs
         auto arg = *pos;
         auto i = aliases.find(arg);
         if (i == aliases.end()) return pos;
-        warn("'%s' is a deprecated alias for '%s'",
-            arg, concatStringsSep(" ", i->second));
+        //warn("'%s' is a deprecated alias for '%s'",
+        //    arg, concatStringsSep(" ", i->second));
         pos = args.erase(pos);
         for (auto j = i->second.rbegin(); j != i->second.rend(); ++j)
             pos = args.insert(pos, *j);
