@@ -490,7 +490,7 @@
 
             makeFlags = "profiledir=$(out)/etc/profile.d PRECOMPILE_HEADERS=1";
 
-            doCheck = false;
+            doCheck = true;
 
             installFlags = "sysconfdir=$(out)/etc";
 
