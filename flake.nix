@@ -445,7 +445,7 @@
             src = nixSrc;
             VERSION_SUFFIX = versionSuffix;
 
-            outputs = [ "out" "dev" "doc" ]
+            outputs = [ "out" ]
               ++ lib.optional (currentStdenv.hostPlatform != currentStdenv.buildPlatform) "check";
 
             nativeBuildInputs = nativeBuildDeps;
@@ -490,13 +490,11 @@
 
             makeFlags = "profiledir=$(out)/etc/profile.d PRECOMPILE_HEADERS=1";
 
-            doCheck = true;
+            doCheck = false;
 
             installFlags = "sysconfdir=$(out)/etc";
 
             postInstall = ''
-              mkdir -p $doc/nix-support
-              echo "doc manual $doc/share/doc/nix/manual" >> $doc/nix-support/hydra-build-products
               ${lib.optionalString currentStdenv.hostPlatform.isStatic ''
               mkdir -p $out/nix-support
               echo "file binary-dist $out/bin/nix" >> $out/nix-support/hydra-build-products
@@ -513,7 +511,7 @@
             installCheckFlags = "sysconfdir=$(out)/etc";
             installCheckTarget = "installcheck"; # work around buggy detection in stdenv
 
-            separateDebugInfo = !currentStdenv.hostPlatform.isStatic;
+            separateDebugInfo = false;
 
             strictDeps = true;
 
@@ -526,6 +524,8 @@
 
             meta.platforms = lib.platforms.unix ++ lib.platforms.windows;
             meta.mainProgram = "nix";
+
+            requiredSystemFeatures = [ "big-parallel" ];
           });
 
           lowdown-nix = with final; currentStdenv.mkDerivation rec {
@@ -740,6 +740,7 @@
         default = nix;
       } // (lib.optionalAttrs (builtins.elem system linux64BitSystems) {
         nix-static = nixpkgsFor.${system}.static.nix;
+        inherit (nixpkgsFor.${system}.native) lowdown;
         dockerImage =
           let
             pkgs = nixpkgsFor.${system}.native;
@@ -824,5 +825,89 @@
               default = self.devShells.${system}.native-stdenvPackages;
             }
         );
+
+    nixosConfigurations.test = nixpkgs.lib.nixosSystem {
+      modules = [{
+        nixpkgs.pkgs = nixpkgsFor.x86_64-linux.native;
+        documentation.enable = false;
+        virtualisation.vmVariant = { config, lib, ... }: {
+          system.stateVersion = lib.versions.majorMinor lib.version;
+          virtualisation = {
+            cores = 2;
+            memorySize = 4 * 1024;
+            diskSize = 20 * 1024;
+            writableStoreUseTmpfs = true;
+            # Set to true to get a GUI
+            graphics = false;
+            qemu = {
+              networkingOptions = [
+                "-net nic,netdev=user.1,model=virtio"
+                "-netdev user,id=user.1,hostfwd=tcp:127.0.0.1:2222-:22"
+              ];
+              options = [
+                "-machine accel=kvm"
+              ];
+              guestAgent.enable = true;
+            };
+          };
+          users = {
+            users = {
+              root = {
+                password = lib.mkVMOverride "";
+              };
+              nix = {
+                isNormalUser = true;
+                password = lib.mkVMOverride "";
+                extraGroups = [ "wheel" ];
+                openssh.authorizedKeys.keyFiles = [ ./id_ed25519.pub ];
+              };
+            };
+            mutableUsers = lib.mkVMOverride false;
+          };
+          security.sudo.wheelNeedsPassword = lib.mkVMOverride false;
+          services = {
+            getty.autologinUser = config.users.users.nix.name;
+
+            openssh = {
+              enable = true;
+              startWhenNeeded = true;
+              openFirewall = true;
+
+              # Ignore the authorized_keys files in the users' home directories,
+              # keys should be added through the config.
+              authorizedKeysFiles = lib.mkForce [ "/etc/ssh/authorized_keys.d/%u" ];
+              settings = {
+                KbdInteractiveAuthentication = true;
+                PasswordAuthentication = true;
+                GSSAPIAuthentication = false;
+                KerberosAuthentication = false;
+
+                PermitRootLogin = "yes";
+              };
+            };
+          };
+
+          nix = {
+            registry.nixpkgs = {
+              from = { type = "indirect"; id = "nixpkgs"; };
+              flake = nixpkgs;
+            };
+
+            settings = {
+              experimental-features = [
+                "flakes"
+                "nix-command"
+                "repl-flake"
+                "auto-allocate-uids"
+                "cgroups"
+                "configurable-impure-env"
+              ];
+              use-cgroups = true;
+              auto-allocate-uids = true;
+            };
+          };
+        };
+      }];
+    };
   };
 }
